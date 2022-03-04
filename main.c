@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,48 +12,55 @@
 #include "uart.h"
 
 #define Button_Active(button) !((button & Button_Read()))
+#define SERIAL_UPDATE 100    // milliseconds
 
 // ADC Channel 6
 /*************************************************************************/ /**
                                                                              * @brief  Sys Tick Handler
                                                                              */
 const int TickDivisor = 1000;                                               // milliseconds
-uint16_t ms_counter = 0;
+const int TickMax = 10000;                                               // milliseconds
+static int counter = 0;
 
 void SysTick_Handler(void)
 {
-    static int counter = 0;
-    if (counter == 0)
-    {
-        counter = TickDivisor;
-        // Process every second
-    }
-    counter--;
+    counter++;
+	if(counter > TickMax) counter = 0;
 }
 
-
-void imprime_mensagem(char *mensagem)
-{
-    int i = 0;
-    while (mensagem[i] != '\0')
-    {
-        UART_SendChar(mensagem[i]);
-        i++;
-    }
+void clean_buffer() {
+	for(int i = 0; i < 10; i++) {
+		UART_SendChar('\n');
+		UART_SendChar('\r');
+	}
 }
 
-void limpar_mensagem(char *mensagem)
-{
-    int i = 0;
-    while (mensagem[i] != '\0')
-    {
-        mensagem[i] = '\0';
-        i++;
-    }
+void my_concat(char* result, int val, const char* frase, int base) {
+	char aux[10];
+	aux[0] = '\0';
+	strcat(result, frase);
+	itoa(val, aux, base);
+	if(base == 16)
+		strcat(result, "0x"); 
+	else if(base == 2)
+		strcat(result, "0b"); 
+	strcat(result, aux); 
+	strcat(result, "\n\r"); 
 }
 
-
-
+void print_info(int ADC, int button1, int button2, int LED_status, int pwm_value) {
+	char info[500];
+	info[0] = '\0';
+	char aux[10];
+	aux[0] = '\0';
+	my_concat(info, ADC, "Valor ADC: ", 10);
+	my_concat(info, button1, "Valor PB0: ", 10);
+	my_concat(info, button2, "Valor PB1: ", 10);
+	my_concat(info, LED_status, "Valor LED2: ", 10);
+	my_concat(info, pwm_value, "Valor PWM: ", 16);
+	clean_buffer();
+	UART_SendString(info);
+}
 
 /*****************************************************************************
  * @brief  Main function
@@ -72,7 +80,7 @@ int main(void) {
 #if 1
     ClockGetConfiguration(&clockconf);
 #endif
-    
+
     // Configure LEDs
     LED_Init(LED1 | LED2);
 
@@ -84,6 +92,7 @@ int main(void) {
 
     // Configure PWM to LED0
     PWM_Init(TIMER3, PWM_LOC1, PWM_PARAMS_ENABLECHANNEL2|PWM_PARAMS_ENABLEPIN2);
+    PWM_Write(TIMER3, 2, 0);
 
     // Configure ADC
     ADC_Init(5000);
@@ -92,64 +101,70 @@ int main(void) {
     // Configure UART
     UART_Init();
 
-    int cntchar = 0;
-    char ch = 0;
-
-    int status = 0;
-    char *pwm_led1 = "LED1 PWM";
-    char *liga_led2 = "LED2 ON";
-    char *desliga_led2 = "LED2 OFF";
-
-    unsigned pwm_value = 0;
-
-    int adc_result = 0;
-    char adc_result_str[10];
-    char input[100];
-    PWM_Write(TIMER3, 2, 0);
+	char buffer[201];
+	char command[201];
+	int command_size = 0;
+	int buffer_pos = 0;
+	char ch;
+	int pwm_value = 0;
+	int adc_result = 0;
+	char adc_result_str[200];
+	char adc_string[200];
+	int buttons[2] = {0};
+	int LED_status = 0;
 
     while (1)
     {
-        // verifica se o botao PB1 foi pressionado e liga tudo
+        ch = UART_GetCharNoWait();
 
-        ch = UART_GetChar();
-        //ch = UART_GetCharNoWait();
-
-        if (ch != 0 && ch != '\n' && ch != '\r')
-        {
-            input[cntchar] = ch;
-            cntchar++;
+		// create a string
+        if (ch != 0) {
+			if(ch == '\n' || ch == '\r') {
+				strcpy(command, buffer);
+				command[buffer_pos] = '\0';
+				buffer[buffer_pos++] = '\n';
+				command_size = buffer_pos;
+				buffer[buffer_pos++] = '\r';
+				buffer[buffer_pos++] = '\0';
+				UART_SendString(buffer);
+				buffer_pos = 0;
+				continue;
+			}
+            buffer[buffer_pos] = ch;
+            buffer_pos++;
         }
-        else if (input[5] == 'P' && input[6] == 'W' && input[7] == 'M')
-        {
-            input[cntchar] = '\0';
-            cntchar = 0;
-            pwm_value = atoi(input + 8);
+
+        if (Button_Active(BUTTON1))
+			buttons[0] = 1;
+
+        if (Button_Active(BUTTON2))
+			buttons[1] = 1;
+
+        if (command[5] == 'P' && command[6] == 'W' && command[7] == 'M') {
+            command[command_size] = '\0';
+            pwm_value = atoi(command + 8);
             PWM_Write(TIMER3, 2, pwm_value);
         }
-        else
-        {
-            input[cntchar] = '\0';
-            cntchar = 0;
 
-            char adc_string[20] = "ADC VALUE: ";
-            adc_result = ADC_Read(ADC_CH0);
+		// Read ADC
+		adc_result = ADC_Read(ADC_CH0);
 
-            itoa(adc_result, adc_result_str, 10);
-            strcat(adc_string, adc_result_str);
-            strcat(adc_string, "\n\r");
-            imprime_mensagem(adc_string);
+		// Control LED2
+		if (strcmp(command, "LED2 ON") == 0) {
+			LED_On(LED2);
+			LED_status = 1;
+		} else if (strcmp(command, "LED2 OFF") == 0) {
+			LED_Off(LED2);
+			LED_status = 0;
+		}
 
-            if (strcmp(input, liga_led2) == 0)
-                LED_On(LED2);
+		// Only send info through serial every SERIAL_UPDATE ms
+		if(counter - SERIAL_UPDATE > 0) {
+			print_info(adc_result, buttons[0], buttons[1], LED_status, pwm_value);
+			counter = 0;
+		}
 
-            else if (strcmp(input, desliga_led2) == 0)
-                LED_Off(LED2);
-
-            else if (Button_Active(BUTTON1))
-                imprime_mensagem("PB0 pressionado\n\r");
-
-            else if (Button_Active(BUTTON2))
-                imprime_mensagem("PB1 pressionado\n\r");
-        }
-    }
+		buttons[0] = 0; buttons[1] = 0;
+		for(int i = 0; i < 1000000; i++);
+	}
 }

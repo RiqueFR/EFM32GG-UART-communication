@@ -90,7 +90,7 @@ DEBUG=y
 #
 # Gecko_SDK DIr
 #
-GECKOSDKDIR=../../Gecko_SDK
+GECKOSDKDIR=../Gecko_SDK
 
 #
 # CMSIS header files folders (ARM and manufacturer specific)
