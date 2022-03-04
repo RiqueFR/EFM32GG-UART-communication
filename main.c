@@ -53,11 +53,11 @@ void print_info(int ADC, int button1, int button2, int LED_status, int pwm_value
 	info[0] = '\0';
 	char aux[10];
 	aux[0] = '\0';
-	my_concat(info, ADC, "Valor ADC: ", 10);
-	my_concat(info, button1, "Valor PB0: ", 10);
-	my_concat(info, button2, "Valor PB1: ", 10);
-	my_concat(info, LED_status, "Valor LED: ", 10);
-	my_concat(info, pwm_value, "Valor PWM: ", 16);
+	my_concat(info, ADC, "ADC: ", 10);
+	my_concat(info, button1, "PB0: ", 10);
+	my_concat(info, button2, "PB1: ", 10);
+	my_concat(info, LED_status, "LED: ", 10);
+	my_concat(info, pwm_value, "PWM: ", 16);
 	clean_buffer();
 	UART_SendString(info);
 }
