@@ -56,7 +56,7 @@ void print_info(int ADC, int button1, int button2, int LED_status, int pwm_value
 	my_concat(info, ADC, "Valor ADC: ", 10);
 	my_concat(info, button1, "Valor PB0: ", 10);
 	my_concat(info, button2, "Valor PB1: ", 10);
-	my_concat(info, LED_status, "Valor LED2: ", 10);
+	my_concat(info, LED_status, "Valor LED: ", 10);
 	my_concat(info, pwm_value, "Valor PWM: ", 16);
 	clean_buffer();
 	UART_SendString(info);
@@ -101,6 +101,7 @@ int main(void) {
     // Configure UART
     UART_Init();
 
+	// Initialize variables
 	char buffer[201];
 	char command[201];
 	int command_size = 0;
@@ -108,8 +109,6 @@ int main(void) {
 	char ch;
 	int pwm_value = 0;
 	int adc_result = 0;
-	char adc_result_str[200];
-	char adc_string[200];
 	int buttons[2] = {0};
 	int LED_status = 0;
 
@@ -117,7 +116,7 @@ int main(void) {
     {
         ch = UART_GetCharNoWait();
 
-		// create a string
+		// Create the command string
         if (ch != 0) {
 			if(ch == '\n' || ch == '\r') {
 				strcpy(command, buffer);
@@ -134,26 +133,28 @@ int main(void) {
             buffer_pos++;
         }
 
+		// Check buttons
         if (Button_Active(BUTTON1))
 			buttons[0] = 1;
-
         if (Button_Active(BUTTON2))
 			buttons[1] = 1;
 
-        if (command[5] == 'P' && command[6] == 'W' && command[7] == 'M') {
+		// Check PWM command
+        if (strlen(command) > 4 && command[0] == 'P' &&
+		  command[1] == 'W' && command[2] == 'M') {
             command[command_size] = '\0';
-            pwm_value = atoi(command + 8);
+            pwm_value = atoi(command + 4);
             PWM_Write(TIMER3, 2, pwm_value);
         }
 
 		// Read ADC
 		adc_result = ADC_Read(ADC_CH0);
 
-		// Control LED2
-		if (strcmp(command, "LED2 ON") == 0) {
+		// Check LED command and control LED2
+		if (strcmp(command, "LED ON") == 0) {
 			LED_On(LED2);
 			LED_status = 1;
-		} else if (strcmp(command, "LED2 OFF") == 0) {
+		} else if (strcmp(command, "LED OFF") == 0) {
 			LED_Off(LED2);
 			LED_status = 0;
 		}
@@ -164,7 +165,9 @@ int main(void) {
 			counter = 0;
 		}
 
+		// refresh variables
 		buttons[0] = 0; buttons[1] = 0;
-		for(int i = 0; i < 1000000; i++);
+		command[0] = '\0';
+		command_size = 0;
 	}
 }
